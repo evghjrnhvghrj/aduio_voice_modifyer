@@ -25,6 +25,9 @@
     <label class="block mb-2 font-semibold">Robotize</label>
     <input id="robot" type="range" min="0" max="100" step="10" value="0" class="w-full mb-4">
 
+    <label class="block mb-2 font-semibold">Bitcrusher</label>
+    <input id="bitcrusher" type="range" min="1" max="16" step="1" value="16" class="w-full mb-4">
+
     <button id="modifyBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl disabled:opacity-50" disabled>
       🎛️ Modify Audio
     </button>
@@ -66,6 +69,7 @@
       const speed = parseFloat(document.getElementById('speed').value);
       const distortionAmount = parseFloat(document.getElementById('distort').value);
       const robotAmount = parseFloat(document.getElementById('robot').value);
+      const bitDepth = parseInt(document.getElementById('bitcrusher').value);
 
       const context = new OfflineAudioContext({
         numberOfChannels: 1,
@@ -77,20 +81,10 @@
       source.buffer = audioBuffer;
       source.playbackRate.value = speed;
 
-      // Gain (volume)
-      const gainNode = context.createGain();
-
-      // Pitch shift with playbackRate
-      const pitchShift = context.createBufferSource();
-      pitchShift.buffer = audioBuffer;
-      pitchShift.playbackRate.value = pitch;
-
-      // Distortion
       const distortion = context.createWaveShaper();
       distortion.curve = makeDistortionCurve(distortionAmount);
       distortion.oversample = '4x';
 
-      // Robot effect (amplitude modulation)
       const robot = context.createGain();
       const modOsc = context.createOscillator();
       const modGain = context.createGain();
@@ -99,15 +93,21 @@
       modOsc.connect(modGain).connect(robot.gain);
       modOsc.start();
 
+      const gainNode = context.createGain();
+
+      // Connect all nodes
       source.connect(distortion);
       distortion.connect(robot);
       robot.connect(gainNode);
-      gainNode.connect(context.destination);
 
+      // Bitcrusher (manual post-process)
+      gainNode.connect(context.destination);
       source.start();
 
       const renderedBuffer = await context.startRendering();
-      const wavBlob = await bufferToWaveBlob(renderedBuffer);
+      const crushed = applyBitcrusher(renderedBuffer, bitDepth);
+
+      const wavBlob = await bufferToWaveBlob(crushed);
       const url = URL.createObjectURL(wavBlob);
 
       downloadBtn.href = url;
@@ -125,6 +125,15 @@
         curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
       }
       return curve;
+    }
+
+    function applyBitcrusher(buffer, bits) {
+      const step = Math.pow(0.5, bits);
+      const channel = buffer.getChannelData(0);
+      for (let i = 0; i < channel.length; i++) {
+        channel[i] = Math.floor(channel[i] / step) * step;
+      }
+      return buffer;
     }
 
     function bufferToWaveBlob(buffer) {
