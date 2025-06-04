@@ -3,79 +3,167 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Voice Changer for MP3</title>
+  <title>Voice Changer FX</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
-  <div class="bg-white shadow-xl rounded-2xl p-6 w-full max-w-xl text-center">
-    <h1 class="text-3xl font-bold mb-4">🎙️ Voice Changer</h1>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-6">
+  <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-xl text-center">
+    <h1 class="text-3xl font-bold mb-4">🎤 MP3 Voice Changer</h1>
+    
+    <input id="fileInput" type="file" accept=".mp3" class="mb-4 block w-full text-black rounded p-2" />
+    <div id="fileError" class="text-red-500 mb-3 hidden">❌ Only MP3 files allowed!</div>
 
-    <input id="fileInput" type="file" accept=".mp3" class="mb-4 block w-full border rounded px-3 py-2" />
-    <div id="fileError" class="text-red-500 mb-2 hidden">❌ Only MP3 files allowed!</div>
+    <label class="block mb-2 font-semibold">Pitch</label>
+    <input id="pitch" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full mb-4">
 
-    <div class="mb-4">
-      <label class="block font-semibold mb-1">Pitch</label>
-      <input id="pitch" type="range" min="0.5" max="2" value="1" step="0.1" class="w-full"/>
-    </div>
+    <label class="block mb-2 font-semibold">Speed</label>
+    <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1" class="w-full mb-4">
 
-    <div class="mb-4">
-      <label class="block font-semibold mb-1">Speed</label>
-      <input id="speed" type="range" min="0.5" max="2" value="1" step="0.1" class="w-full"/>
-    </div>
+    <label class="block mb-2 font-semibold">Distortion</label>
+    <input id="distort" type="range" min="0" max="1000" step="50" value="0" class="w-full mb-4">
 
-    <button id="modifyBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-2 rounded-xl disabled:opacity-50" disabled>
+    <label class="block mb-2 font-semibold">Robotize</label>
+    <input id="robot" type="range" min="0" max="100" step="10" value="0" class="w-full mb-4">
+
+    <button id="modifyBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl disabled:opacity-50" disabled>
       🎛️ Modify Audio
     </button>
 
-    <div id="status" class="mt-4 text-green-600 hidden">✅ Audio modified successfully!</div>
+    <div id="status" class="mt-4 hidden text-green-400">✅ Audio processed!</div>
 
-    <a id="downloadBtn" href="#" download="modified.mp3" class="mt-4 inline-block bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-2 rounded-xl hidden">
-      ⬇️ Download Modified MP3
+    <a id="downloadBtn" href="#" download="modified.wav" class="mt-4 hidden bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2 rounded-xl inline-block">
+      ⬇️ Download Modified Audio
     </a>
   </div>
 
   <script>
     const fileInput = document.getElementById('fileInput');
+    const fileError = document.getElementById('fileError');
     const modifyBtn = document.getElementById('modifyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
-    const fileError = document.getElementById('fileError');
     const status = document.getElementById('status');
 
-    let uploadedFile = null;
+    let audioBuffer = null;
 
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file || file.type !== 'audio/mpeg') {
         fileError.classList.remove('hidden');
         modifyBtn.disabled = true;
-        uploadedFile = null;
-      } else {
-        fileError.classList.add('hidden');
-        modifyBtn.disabled = false;
-        uploadedFile = file;
+        return;
       }
+
+      fileError.classList.add('hidden');
+      modifyBtn.disabled = false;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const context = new AudioContext();
+      audioBuffer = await context.decodeAudioData(arrayBuffer);
     });
 
-    modifyBtn.addEventListener('click', () => {
-      if (!uploadedFile) return;
+    modifyBtn.addEventListener('click', async () => {
+      const pitch = parseFloat(document.getElementById('pitch').value);
+      const speed = parseFloat(document.getElementById('speed').value);
+      const distortionAmount = parseFloat(document.getElementById('distort').value);
+      const robotAmount = parseFloat(document.getElementById('robot').value);
 
-      // Simulate modification delay
-      status.classList.add('hidden');
-      modifyBtn.textContent = '🔧 Modifying...';
-      modifyBtn.disabled = true;
+      const context = new OfflineAudioContext({
+        numberOfChannels: 1,
+        length: audioBuffer.length,
+        sampleRate: audioBuffer.sampleRate
+      });
 
-      setTimeout(() => {
-        // Fake modification output
-        const blob = new Blob([uploadedFile], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-        downloadBtn.href = url;
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.playbackRate.value = speed;
 
-        modifyBtn.textContent = '🎛️ Modify Audio';
-        modifyBtn.disabled = false;
-        downloadBtn.classList.remove('hidden');
-        status.classList.remove('hidden');
-      }, 2000);
+      // Gain (volume)
+      const gainNode = context.createGain();
+
+      // Pitch shift with playbackRate
+      const pitchShift = context.createBufferSource();
+      pitchShift.buffer = audioBuffer;
+      pitchShift.playbackRate.value = pitch;
+
+      // Distortion
+      const distortion = context.createWaveShaper();
+      distortion.curve = makeDistortionCurve(distortionAmount);
+      distortion.oversample = '4x';
+
+      // Robot effect (amplitude modulation)
+      const robot = context.createGain();
+      const modOsc = context.createOscillator();
+      const modGain = context.createGain();
+      modOsc.frequency.value = robotAmount;
+      modGain.gain.value = 0.5;
+      modOsc.connect(modGain).connect(robot.gain);
+      modOsc.start();
+
+      source.connect(distortion);
+      distortion.connect(robot);
+      robot.connect(gainNode);
+      gainNode.connect(context.destination);
+
+      source.start();
+
+      const renderedBuffer = await context.startRendering();
+      const wavBlob = await bufferToWaveBlob(renderedBuffer);
+      const url = URL.createObjectURL(wavBlob);
+
+      downloadBtn.href = url;
+      downloadBtn.classList.remove('hidden');
+      status.classList.remove('hidden');
     });
+
+    function makeDistortionCurve(amount) {
+      const k = typeof amount === 'number' ? amount : 50,
+        n_samples = 44100,
+        curve = new Float32Array(n_samples),
+        deg = Math.PI / 180;
+      for (let i = 0; i < n_samples; ++i) {
+        const x = i * 2 / n_samples - 1;
+        curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+      }
+      return curve;
+    }
+
+    function bufferToWaveBlob(buffer) {
+      return new Promise((resolve) => {
+        const length = buffer.length * 2;
+        const wavBuffer = new ArrayBuffer(44 + length);
+        const view = new DataView(wavBuffer);
+        let offset = 0;
+
+        function writeString(str) {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset++, str.charCodeAt(i));
+          }
+        }
+
+        writeString('RIFF');
+        view.setUint32(offset, 36 + length, true); offset += 4;
+        writeString('WAVE');
+        writeString('fmt ');
+        view.setUint32(offset, 16, true); offset += 4;
+        view.setUint16(offset, 1, true); offset += 2;
+        view.setUint16(offset, 1, true); offset += 2;
+        view.setUint32(offset, buffer.sampleRate, true); offset += 4;
+        view.setUint32(offset, buffer.sampleRate * 2, true); offset += 4;
+        view.setUint16(offset, 2, true); offset += 2;
+        view.setUint16(offset, 16, true); offset += 2;
+        writeString('data');
+        view.setUint32(offset, length, true); offset += 4;
+
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          const s = Math.max(-1, Math.min(1, data[i]));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+          offset += 2;
+        }
+
+        resolve(new Blob([view], { type: 'audio/wav' }));
+      });
+    }
   </script>
 </body>
 </html>
